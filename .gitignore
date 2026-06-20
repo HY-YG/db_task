@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+
+uploads/*
+!uploads/.gitkeep
+
+# Exclude explanatory and planning documents by default.
+README.md
+docs/
+功能描述.md
+后续详细学习计划.txt
+笔记.md
+要求.md
+项目结构.md
+
+# Keep only the two required project documents.
+!数据库项目作业.md
+!数据字典.md
+
+# Exclude test scripts from repository sharing.
+scripts/test_*.py
