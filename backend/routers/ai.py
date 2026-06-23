@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.config.db_config import get_db
 from backend.crud import ai_crud
 from backend.schemas.ai_sch import (
+    AiAssistantChatRequest,
+    AiAssistantChatResponse,
     AiChatRequest,
     AiChatResponse,
     AiCoachNextRequest,
@@ -22,7 +24,7 @@ from backend.schemas.ai_sch import (
     AiVectorizeRequest,
     AiVectorizeResponse,
 )
-from backend.services import chat_agent, coach_agent, qa_agent, upload_agent, vectorize_agent
+from backend.services import assistant_orchestrator, chat_agent, coach_agent, qa_agent, upload_agent, vectorize_agent
 from backend.utils.response import success_response
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -198,3 +200,23 @@ async def chat(payload: AiChatRequest, db: AsyncSession = Depends(get_db)) -> di
     return success_response(
         AiChatResponse(answer=answer, tool_name=tool_name, tool_result=tool_result, contexts=contexts)
     )
+
+
+@router.post("/assistant/chat")
+async def assistant_chat(payload: AiAssistantChatRequest, db: AsyncSession = Depends(get_db)) -> dict:
+    session = await ai_crud.get_session(db, payload.session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.user_id != payload.user_id:
+        raise HTTPException(status_code=403, detail="Session does not belong to this user")
+
+    result = await assistant_orchestrator.handle_assistant_chat(
+        db=db,
+        session=session,
+        user_id=payload.user_id,
+        message=payload.message,
+        course_id=payload.course_id,
+        top_k=payload.top_k,
+        confirm_personal_context=payload.confirm_personal_context,
+    )
+    return success_response(AiAssistantChatResponse(**result.to_response_payload()))

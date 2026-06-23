@@ -14,10 +14,12 @@ docs/
 笔记.md
 要求.md
 项目结构.md
-
+streamlit前端PRD.md
+streamlit前端技术方案.md
 # Keep only the two required project documents.
 !数据库项目作业.md
 !数据字典.md
 
 # Exclude test scripts from repository sharing.
 scripts/test_*.py
+.trae/documents/streamlit前端PRD.md

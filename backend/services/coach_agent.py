@@ -11,7 +11,7 @@ from backend.crud import ai_crud, study_plans_crud
 from backend.schemas.ai_sch import AiMessageCreate, AiSessionUpdate
 from backend.schemas.study_plans_sch import StudyPlanCreate, StudyPlanUpdate
 from backend.services.langchain_utils import extract_text_from_agent_result, invoke_chat_model_text
-from backend.services import tools as coach_tools
+from backend.services import memory_service, tools as coach_tools
 from backend.services.llm import chat_completion, get_langchain_chat_model
 
 
@@ -98,6 +98,28 @@ async def _get_coach_course_id(db: AsyncSession, session_id: int) -> int | None:
 
 async def _run_langchain_text(*, system_prompt: str, user_content: str) -> str | None:
     return await invoke_chat_model_text(system_prompt=system_prompt, user_content=user_content, temperature=0.2)
+
+
+async def _store_coach_memory(
+    *,
+    db: AsyncSession,
+    session: Any,
+    memory_kind: str,
+    coach_stage: str | None,
+    source_text: str,
+    extra_meta: dict[str, Any] | None = None,
+) -> None:
+    course_id = await _get_coach_course_id(db, session.session_id)
+    await memory_service.summarize_text_to_memory(
+        db=db,
+        session_id=session.session_id,
+        user_id=session.user_id,
+        course_id=course_id,
+        source_text=source_text,
+        memory_kind=memory_kind,
+        coach_stage=coach_stage,
+        extra_meta=extra_meta,
+    )
 
 
 async def handle_start(*, db: AsyncSession, session: Any, course_id: int) -> str:
@@ -246,6 +268,14 @@ async def handle_diagnose(*, db: AsyncSession, session: Any, message: str | None
             },
         ),
     )
+    await _store_coach_memory(
+        db=db,
+        session=session,
+        memory_kind="coach_diagnosis_summary",
+        coach_stage="coach_plan",
+        source_text=diagnosis_summary,
+        extra_meta={"source": "coach_diagnose"},
+    )
     return DiagnoseStageResult(
         session_id=session.session_id,
         stage=session.session_status,
@@ -311,6 +341,14 @@ async def handle_plan(*, db: AsyncSession, session: Any) -> PlanStageResult:
         ),
     )
     session = await ai_crud.update_session(db, session, AiSessionUpdate(session_status="coach_execute"))
+    await _store_coach_memory(
+        db=db,
+        session=session,
+        memory_kind="coach_plan_summary",
+        coach_stage="coach_execute",
+        source_text=plan_content,
+        extra_meta={"plan_id": plan.plan_id, "source": "coach_plan"},
+    )
     return PlanStageResult(
         session_id=session.session_id,
         stage=session.session_status,
@@ -391,6 +429,14 @@ async def handle_execute(*, db: AsyncSession, session: Any, message: str | None)
                 },
             ),
         )
+        await _store_coach_memory(
+            db=db,
+            session=session,
+            memory_kind="coach_completion_summary",
+            coach_stage="coach_done",
+            source_text=completion_summary,
+            extra_meta={"plan_id": plan_id, "source": "coach_completion"},
+        )
         return ExecuteStageResult(
             session_id=session.session_id,
             stage=session.session_status,
@@ -444,6 +490,14 @@ async def handle_execute(*, db: AsyncSession, session: Any, message: str | None)
                 },
             ),
         )
+        await _store_coach_memory(
+            db=db,
+            session=session,
+            memory_kind="coach_adjustment_summary",
+            coach_stage="coach_execute",
+            source_text=adjusted_plan,
+            extra_meta={"plan_id": plan_id, "source": "coach_adjustment"},
+        )
 
     review_mode = intent.need_daily_review
     execution_feedback = await _run_langchain_coach_agent(
@@ -474,6 +528,18 @@ async def handle_execute(*, db: AsyncSession, session: Any, message: str | None)
                 "feedback": execution_feedback,
             },
         ),
+    )
+    await _store_coach_memory(
+        db=db,
+        session=session,
+        memory_kind="coach_execution_summary",
+        coach_stage="coach_execute",
+        source_text=execution_feedback,
+        extra_meta={
+            "plan_id": plan_id,
+            "review_mode": review_mode,
+            "source": "coach_execute_feedback",
+        },
     )
     return ExecuteStageResult(
         session_id=session.session_id,

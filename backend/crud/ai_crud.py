@@ -64,7 +64,7 @@ async def has_ai_message_json(
     stmt = (
         select(AiMessage.message_id)
         .where(AiMessage.session_id == session_id, AiMessage.sender == "ai")
-        .where(AiMessage.message_content.contains(payload)) #@>
+        .where(AiMessage.message_content.contains(payload)) #@>方法
         .limit(1)
     )
     result = await db.execute(stmt)

@@ -35,6 +35,28 @@ class AiMessageResponse(ORMModel):
     sent_at: datetime
 
 
+class AiMemoryCreate(ORMModel):
+    session_id: int
+    user_id: int
+    course_id: int | None = None
+    memory_kind: str = Field(..., max_length=40)
+    coach_stage: str | None = Field(default=None, max_length=40)
+    summary_text: str
+    memory_meta: dict = Field(default_factory=dict)
+
+
+class AiMemoryResponse(ORMModel):
+    memory_id: int
+    session_id: int
+    user_id: int
+    course_id: int | None = None
+    memory_kind: str
+    coach_stage: str | None = None
+    summary_text: str
+    memory_meta: dict = Field(default_factory=dict)
+    created_at: datetime
+
+
 class AiQaRequest(ORMModel):
     question: str
     user_id: int | None = None
@@ -68,6 +90,26 @@ class AiChatResponse(ORMModel):
     tool_name: str | None = None
     tool_result: dict | None = None
     contexts: list[AiQaContext] = Field(default_factory=list)
+
+
+class AiAssistantChatRequest(ORMModel):
+    session_id: int
+    user_id: int
+    message: str
+    course_id: int | None = None
+    top_k: int = Field(default=5, ge=1, le=20)
+    confirm_personal_context: bool = False
+
+
+class AiAssistantChatResponse(ORMModel):
+    answer: str
+    mode: str
+    tool_name: str | None = None
+    tool_result: dict | None = None
+    contexts: list[AiQaContext] = Field(default_factory=list)
+    permission_required: bool = False
+    permission_reason: str | None = None
+    coach_stage: str | None = None
 
 
 class AiVectorizeRequest(ORMModel):

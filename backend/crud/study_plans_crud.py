@@ -6,7 +6,7 @@ from backend.schemas.study_plans_sch import StudyPlanCreate, StudyPlanUpdate
 
 
 async def create_plan(db: AsyncSession, payload: StudyPlanCreate) -> StudyPlan:
-    plan = StudyPlan(**payload.model_dump(exclude_none=True))
+    plan = StudyPlan(**payload.model_dump(exclude_none=True)) #转字典
     db.add(plan)
     await db.commit()
     await db.refresh(plan)

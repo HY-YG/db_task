@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 import uvicorn
+from sqlalchemy import text
 
 from backend.config.db_config import Base, engine
 from backend.routers import (
@@ -27,6 +28,7 @@ async def lifespan(_: FastAPI):
     import backend.models
 
     async with engine.begin() as conn:
+        await conn.execute(text("create extension if not exists vector"))
         await conn.run_sync(Base.metadata.create_all)
     yield
     await engine.dispose()

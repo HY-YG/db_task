@@ -1,3 +1,4 @@
+from backend.models.ai_memories_mod import AiMemory
 from backend.models.ai_messages_mod import AiMessage
 from backend.models.ai_sessions_mod import AiSession
 from backend.models.assignment_submissions_mod import AssignmentSubmission
@@ -18,6 +19,7 @@ from backend.models.teaching_relations_mod import TeachingRelation
 from backend.models.users_mod import User
 
 __all__ = [
+    "AiMemory",
     "AiMessage",
     "AiSession",
     "Assignment",
