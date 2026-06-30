@@ -1,7 +1,9 @@
+"""定义作业提交的数据表模型、字段映射与实体关系。"""
+
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.config.db_config import Base
@@ -20,6 +22,9 @@ class AssignmentSubmission(Base):
     submission_status: Mapped[str] = mapped_column(String(20), nullable=False, default="未提交")
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     submission_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    teacher_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     assignment: Mapped["Assignment"] = relationship(back_populates="submissions")
     user: Mapped["User"] = relationship(back_populates="assignment_submissions")

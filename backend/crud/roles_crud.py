@@ -1,3 +1,5 @@
+"""封装角色的数据访问函数，负责常用增删改查与查询组合。"""
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +22,11 @@ async def list_roles(db: AsyncSession) -> list[Role]:
 
 async def get_role(db: AsyncSession, role_id: int) -> Role | None:
     return await db.get(Role, role_id)
+
+
+async def get_role_by_name(db: AsyncSession, role_name: str) -> Role | None:
+    result = await db.execute(select(Role).where(Role.role_name == role_name))
+    return result.scalar_one_or_none()
 
 
 async def update_role(db: AsyncSession, role: Role, payload: RoleUpdate) -> Role:

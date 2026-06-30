@@ -1,3 +1,5 @@
+"""定义课程笔记的数据表模型、字段映射与实体关系。"""
+
 from datetime import datetime
 from typing import TYPE_CHECKING
 

@@ -1,2 +1,2 @@
-"""API services for Streamlit frontend."""
+"""services 子包初始化文件，用于组织前端模块结构。"""
 

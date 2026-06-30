@@ -1,3 +1,5 @@
+"""封装统一的接口成功响应结构。"""
+
 from pydantic import BaseModel
 
 

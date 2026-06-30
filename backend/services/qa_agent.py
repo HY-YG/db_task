@@ -1,3 +1,5 @@
+"""封装课程问答代理，基于检索上下文生成知识问答结果。"""
+
 import json
 
 from sqlalchemy.ext.asyncio import AsyncSession

@@ -1,3 +1,5 @@
+"""定义角色相关的请求体、响应体与数据校验模型。"""
+
 from pydantic import Field
 
 from backend.schemas.base import ORMModel

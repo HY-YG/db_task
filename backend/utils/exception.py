@@ -1,9 +1,10 @@
+"""定义项目内统一使用的业务异常类型。"""
+
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from backend.utils.response import success_response
-
 
 async def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
     return JSONResponse(

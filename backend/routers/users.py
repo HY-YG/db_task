@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+"""提供用户资料查询与基础用户管理接口。"""
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config.db_config import get_db
@@ -9,23 +11,23 @@ from backend.utils.response import success_response
 
 router = APIRouter(tags=["users"])
 
-roles_router = APIRouter(prefix="/roles", tags=["roles"])
-users_router = APIRouter(prefix="/users", tags=["users"])
+roles_router = APIRouter(prefix="/role", tags=["roles"])
+users_router = APIRouter(prefix="/user", tags=["users"])
 
 
-@roles_router.post("", status_code=status.HTTP_201_CREATED)
+@roles_router.post("/add")
 async def create_role(payload: RoleCreate, db: AsyncSession = Depends(get_db)) -> dict:
     role = await roles_crud.create_role(db, payload)
     return success_response(RoleResponse.model_validate(role))
 
 
-@roles_router.get("")
+@roles_router.get("/list")
 async def list_roles(db: AsyncSession = Depends(get_db)) -> dict:
     roles = await roles_crud.list_roles(db)
     return success_response([RoleResponse.model_validate(item) for item in roles])
 
 
-@roles_router.get("/{role_id}")
+@roles_router.get("/detail/{role_id}")
 async def get_role(role_id: int, db: AsyncSession = Depends(get_db)) -> dict:
     role = await roles_crud.get_role(db, role_id)
     if role is None:
@@ -33,7 +35,7 @@ async def get_role(role_id: int, db: AsyncSession = Depends(get_db)) -> dict:
     return success_response(RoleResponse.model_validate(role))
 
 
-@roles_router.put("/{role_id}")
+@roles_router.put("/update/{role_id}")
 async def update_role(role_id: int, payload: RoleUpdate, db: AsyncSession = Depends(get_db)) -> dict:
     role = await roles_crud.get_role(db, role_id)
     if role is None:
@@ -42,7 +44,7 @@ async def update_role(role_id: int, payload: RoleUpdate, db: AsyncSession = Depe
     return success_response(RoleResponse.model_validate(role))
 
 
-@roles_router.delete("/{role_id}")
+@roles_router.delete("/delete/{role_id}")
 async def delete_role(role_id: int, db: AsyncSession = Depends(get_db)) -> dict:
     role = await roles_crud.get_role(db, role_id)
     if role is None:
@@ -51,19 +53,19 @@ async def delete_role(role_id: int, db: AsyncSession = Depends(get_db)) -> dict:
     return success_response()
 
 
-@users_router.post("", status_code=status.HTTP_201_CREATED)
+@users_router.post("/add")
 async def create_user(payload: UserCreate, db: AsyncSession = Depends(get_db)) -> dict:
     user = await users_crud.create_user(db, payload)
     return success_response(UserResponse.model_validate(user))
 
 
-@users_router.get("")
+@users_router.get("/list")
 async def list_users(db: AsyncSession = Depends(get_db)) -> dict:
     users = await users_crud.list_users(db)
     return success_response([UserResponse.model_validate(item) for item in users])
 
 
-@users_router.get("/{user_id}")
+@users_router.get("/detail/{user_id}")
 async def get_user(user_id: int, db: AsyncSession = Depends(get_db)) -> dict:
     user = await users_crud.get_user(db, user_id)
     if user is None:
@@ -71,7 +73,7 @@ async def get_user(user_id: int, db: AsyncSession = Depends(get_db)) -> dict:
     return success_response(UserResponse.model_validate(user))
 
 
-@users_router.put("/{user_id}")
+@users_router.put("/update/{user_id}")
 async def update_user(user_id: int, payload: UserUpdate, db: AsyncSession = Depends(get_db)) -> dict:
     user = await users_crud.get_user(db, user_id)
     if user is None:
@@ -80,7 +82,7 @@ async def update_user(user_id: int, payload: UserUpdate, db: AsyncSession = Depe
     return success_response(UserResponse.model_validate(user))
 
 
-@users_router.delete("/{user_id}")
+@users_router.delete("/delete/{user_id}")
 async def delete_user(user_id: int, db: AsyncSession = Depends(get_db)) -> dict:
     user = await users_crud.get_user(db, user_id)
     if user is None:

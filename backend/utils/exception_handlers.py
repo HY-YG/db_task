@@ -1,3 +1,5 @@
+"""注册全局异常处理器，统一接口错误返回格式。"""
+
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 

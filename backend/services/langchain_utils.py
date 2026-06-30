@@ -1,3 +1,5 @@
+"""提供 LangChain 相关的通用适配、消息转换与辅助工具。"""
+
 from typing import Any
 
 from backend.services.llm import get_langchain_chat_model

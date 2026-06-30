@@ -1,14 +1,31 @@
+"""封装通用聊天代理，负责组织提示词、调用大模型并生成回答。"""
+
 import json
 
 from langchain.agents import create_agent
 from langchain.tools import tool
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.config.db_config import AsyncSessionLocal
 from backend.crud import ai_crud
 from backend.schemas.ai_sch import AiMessageCreate
 from backend.services.langchain_utils import extract_text_from_agent_result
 from backend.services import rag, tools as builtin_tools
 from backend.services.llm import chat_completion, get_langchain_chat_model
+
+
+async def _store_tool_messages(db: AsyncSession, session_id: int, called_tools: list[dict]) -> None:
+    for item in called_tools:
+        tool_name = str(item.get("tool") or "")
+        result = item.get("result")
+        await ai_crud.create_message(
+            db,
+            AiMessageCreate(
+                session_id=session_id,
+                sender="tool",
+                message_content={"type": "tool", "tool": tool_name, "result": result},
+            ),
+        )
 
 
 async def handle_chat(
@@ -33,16 +50,9 @@ async def handle_chat(
         if course_id is None:
             data = {"error": "course_id is required"}
         else:
-            data = await builtin_tools.query_course_resources(db, course_id=course_id)
+            async with AsyncSessionLocal() as tool_db:
+                data = await builtin_tools.query_course_resources(tool_db, course_id=course_id)
         called_tools.append({"tool": "query_course_resources", "result": data})
-        await ai_crud.create_message(
-            db,
-            AiMessageCreate(
-                session_id=session_id,
-                sender="tool",
-                message_content={"type": "tool", "tool": "query_course_resources", "result": data},
-            ),
-        )
         return json.dumps(data, ensure_ascii=False)
 
     tools = [get_course_resources]
@@ -52,31 +62,17 @@ async def handle_chat(
         @tool
         async def get_user_notes() -> str:
             """查询当前学生在本课程下的学习笔记。"""
-            data = await builtin_tools.query_user_notes(db, user_id=user_id, course_id=course_id)
+            async with AsyncSessionLocal() as tool_db:
+                data = await builtin_tools.query_user_notes(tool_db, user_id=user_id, course_id=course_id)
             called_tools.append({"tool": "query_user_notes", "result": data})
-            await ai_crud.create_message(
-                db,
-                AiMessageCreate(
-                    session_id=session_id,
-                    sender="tool",
-                    message_content={"type": "tool", "tool": "query_user_notes", "result": data},
-                ),
-            )
             return json.dumps(data, ensure_ascii=False)
 
         @tool
         async def get_study_plans() -> str:
             """查询当前学生最近的学习计划，用于分析计划安排和执行情况。"""
-            data = await builtin_tools.query_study_plans(db, user_id=user_id)
+            async with AsyncSessionLocal() as tool_db:
+                data = await builtin_tools.query_study_plans(tool_db, user_id=user_id)
             called_tools.append({"tool": "query_study_plans", "result": data})
-            await ai_crud.create_message(
-                db,
-                AiMessageCreate(
-                    session_id=session_id,
-                    sender="tool",
-                    message_content={"type": "tool", "tool": "query_study_plans", "result": data},
-                ),
-            )
             return json.dumps(data, ensure_ascii=False)
 
         @tool
@@ -85,36 +81,22 @@ async def handle_chat(
             if course_id is None:
                 data = {"error": "course_id is required"}
             else:
-                data = await builtin_tools.query_assignment_status(db, user_id=user_id, course_id=course_id)
+                async with AsyncSessionLocal() as tool_db:
+                    data = await builtin_tools.query_assignment_status(tool_db, user_id=user_id, course_id=course_id)
             called_tools.append({"tool": "query_assignment_status", "result": data})
-            await ai_crud.create_message(
-                db,
-                AiMessageCreate(
-                    session_id=session_id,
-                    sender="tool",
-                    message_content={"type": "tool", "tool": "query_assignment_status", "result": data},
-                ),
-            )
             return json.dumps(data, ensure_ascii=False)
 
         @tool
         async def get_learning_memories() -> str:
             """查询当前学生最近的学习摘要记忆，用于辅助连续分析。"""
-            data = await builtin_tools.query_learning_memories(
-                db,
-                user_id=user_id,
-                course_id=course_id,
-                limit=5,
-            )
+            async with AsyncSessionLocal() as tool_db:
+                data = await builtin_tools.query_learning_memories(
+                    tool_db,
+                    user_id=user_id,
+                    course_id=course_id,
+                    limit=5,
+                )
             called_tools.append({"tool": "query_learning_memories", "result": data})
-            await ai_crud.create_message(
-                db,
-                AiMessageCreate(
-                    session_id=session_id,
-                    sender="tool",
-                    message_content={"type": "tool", "tool": "query_learning_memories", "result": data},
-                ),
-            )
             return json.dumps(data, ensure_ascii=False)
 
         tools.extend([get_user_notes, get_study_plans, get_assignment_status, get_learning_memories])
@@ -127,6 +109,7 @@ async def handle_chat(
     ]
     if allow_personal_context:
         prompt_lines.append("你已获得授权，可以读取当前学生的个人学习资料。")
+        prompt_lines.append("当用户询问你能否查看/读取他的笔记、学习计划、作业情况时，必须优先调用对应工具验证，不要自行声称没有权限。")
     else:
         prompt_lines.append("你当前没有权限读取学生的个人学习资料，只能使用公共课程资料。")
     if mode_hint == "personal_analysis":
@@ -206,5 +189,5 @@ async def handle_chat(
         else:
             tool_name = "multiple"
             tool_result = {"tools": called_tools}
-
+        await _store_tool_messages(db, session_id, called_tools)
     return answer, tool_name, tool_result, contexts

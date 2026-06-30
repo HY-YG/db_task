@@ -1,3 +1,5 @@
+"""封装资源切片的数据访问函数，负责常用增删改查与查询组合。"""
+
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 

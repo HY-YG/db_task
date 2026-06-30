@@ -1,3 +1,5 @@
+"""定义课程资源相关的请求体、响应体与数据校验模型。"""
+
 from datetime import datetime
 
 from pydantic import Field

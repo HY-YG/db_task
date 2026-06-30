@@ -1,6 +1,9 @@
+"""封装课程资源的数据访问函数，负责常用增删改查与查询组合。"""
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.models.course_chapters_mod import CourseChapter
 from backend.models.course_resources_mod import CourseResource
 from backend.schemas.course_resources_sch import CourseResourceCreate, CourseResourceUpdate
 
@@ -18,6 +21,17 @@ async def list_resources(db: AsyncSession, chapter_id: int | None = None) -> lis
     if chapter_id is not None:
         stmt = stmt.where(CourseResource.chapter_id == chapter_id)
     result = await db.execute(stmt.order_by(CourseResource.resource_id))
+    return list(result.scalars().all())
+
+
+async def list_resources_by_course(db: AsyncSession, course_id: int) -> list[CourseResource]:
+    stmt = (
+        select(CourseResource)
+        .join(CourseChapter, CourseChapter.chapter_id == CourseResource.chapter_id)
+        .where(CourseChapter.course_id == course_id)
+        .order_by(CourseChapter.chapter_order, CourseResource.resource_id)
+    )
+    result = await db.execute(stmt)
     return list(result.scalars().all())
 
 

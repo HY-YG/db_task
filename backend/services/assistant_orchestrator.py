@@ -1,14 +1,17 @@
+"""统一编排 AI 助手问答、权限确认、教练模式与上下文整合。"""
+
 import json
 from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.crud import ai_crud
+from backend.crud import ai_crud, assignments_crud, course_chapters_crud, course_resources_crud
 from backend.schemas.ai_sch import AiMessageCreate
-from backend.services import chat_agent, coach_agent, memory_service, qa_agent
+from backend.services import chat_agent, coach_agent, memory_service, qa_agent, tools as builtin_tools
 from backend.services.langchain_utils import invoke_chat_model_text
 
+# 这组常量用于做首轮本地路由判断，优先覆盖高频、低成本的意图识别场景。
 COACH_STATUSES = {"coach_diagnose", "coach_plan", "coach_execute", "coach_done"}
 RECENT_HISTORY_LIMIT = 6
 SUMMARY_TRIGGER_COUNT = 8
@@ -35,8 +38,24 @@ COACH_REQUEST_KEYWORDS = (
     "带我学",
     "监督我",
 )
-QA_HINT_KEYWORDS = ("什么是", "解释", "区别", "原理", "概念", "为什么", "如何理解")
+QA_HINT_KEYWORDS = ("什么是", "解释", "区别", "原理", "概念", "为什么", "如何理解", "几个章节", "多少章节", "几章", "几个作业", "多少作业", "几个资源", "多少资源")
 PERMISSION_CONFIRM_WORDS = {"同意", "可以", "确认", "继续", "允许", "授权", "好", "好的", "行"}
+SMALL_TALK_REPLIES = {
+    "哈哈": "哈哈，我在。你可以继续问课程内容、作业要求，或者让我帮你总结这门课的重点。",
+    "哈哈哈": "收到，我在这儿。想继续聊课程结构、章节重点，还是作业问题？",
+    "你好": "你好，我在。你可以直接问当前课程有多少章节、重点资源或作业安排。",
+    "hi": "你好，我在。你可以直接问课程问题，或者让我帮你梳理学习重点。",
+    "hello": "你好，我在。你可以直接问课程问题，或者让我帮你梳理学习重点。",
+    "谢谢": "不客气。如果你愿意，我还可以继续帮你梳理课程章节、资源和作业重点。",
+}
+DIALOGUE_RECALL_KEYWORDS = (
+    "我上面跟你说了什么",
+    "我刚才说了什么",
+    "回顾一下我们刚才的对话",
+    "复述一下我们刚才的对话",
+    "你还记得我刚才说了什么",
+    "总结一下我们刚才的对话",
+)
 
 
 @dataclass
@@ -91,6 +110,138 @@ def _prefer_qa_mode(text: str, course_id: int | None) -> bool:
 def _looks_like_permission_confirmation(text: str) -> bool:
     normalized = text.strip().replace("。", "").replace("，", "").replace("！", "").replace("!", "")
     return normalized in PERMISSION_CONFIRM_WORDS
+
+
+def _try_small_talk_reply(text: str) -> str | None:
+    normalized = text.strip().lower()
+    direct_reply = SMALL_TALK_REPLIES.get(normalized)
+    if direct_reply is not None:
+        return direct_reply
+    if normalized and len(normalized) <= 6 and all(ch in {"哈", "h", "a", "!", "！", "~", "?", "？"} for ch in normalized):
+        return "哈哈，我在。你可以继续问当前课程有多少章节、有哪些资源，或者让我帮你梳理这门课的重点。"
+    return None
+
+
+def _looks_like_dialogue_recall(text: str) -> bool:
+    normalized = text.strip()
+    return any(keyword in normalized for keyword in DIALOGUE_RECALL_KEYWORDS)
+
+
+def _build_dialogue_recall_answer(history: list[dict[str, str]]) -> str:
+    user_messages: list[str] = []
+    for item in history:
+        if item.get("role") != "user":
+            continue
+        content = str(item.get("content") or "").strip()
+        if not content:
+            continue
+        if not user_messages or user_messages[-1] != content:
+            user_messages.append(content)
+
+    if not user_messages:
+        return "这几轮里你还没有给我留下明确的用户消息，我暂时无法回顾。"
+
+    lines = [f"{index + 1}. {content}" for index, content in enumerate(user_messages[-5:])]
+    return "回顾一下你刚才主要对我说的话：\n\n" + "\n".join(lines)
+
+
+def _looks_like_personal_access_question(text: str, keyword: str) -> bool:
+    normalized = text.strip()
+    return keyword in normalized and any(
+        marker in normalized
+        for marker in ("能看到", "看得到", "看到", "查看", "读取", "访问", "能不能看", "可不可以看", "能否看")
+    )
+
+
+async def _try_fast_personal_reply(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    course_id: int | None,
+    text: str,
+    allow_personal_context: bool,
+) -> tuple[str, str | None, dict | None] | None:
+    if not allow_personal_context:
+        return None
+
+    # 这类问题答案几乎完全来自结构化数据，直接走本地工具比交给大模型更快也更稳定。
+    if _looks_like_personal_access_question(text, "笔记"):
+        data = await builtin_tools.query_user_notes(db, user_id=user_id, course_id=course_id)
+        notes = data.get("notes", []) if isinstance(data.get("notes"), list) else []
+        scope_text = "当前课程下" if course_id is not None else ""
+        if notes:
+            latest = notes[0] if isinstance(notes[0], dict) else {}
+            preview = str(latest.get("content") or "").strip().replace("\n", " ")
+            if len(preview) > 80:
+                preview = preview[:80] + "..."
+            answer = (
+                f"可以，我已获得你的授权，能够读取你{scope_text}的学习笔记。"
+                f"当前共读取到 {len(notes)} 条笔记。"
+                f"{'最近一条笔记是：' + preview if preview else ''}"
+            )
+        else:
+            answer = f"可以，我已获得你的授权，但你{scope_text}暂时还没有可读取的学习笔记。"
+        return answer, "query_user_notes", data
+
+    if _looks_like_personal_access_question(text, "学习计划"):
+        data = await builtin_tools.query_study_plans(db, user_id=user_id)
+        plans = data.get("plans", []) if isinstance(data.get("plans"), list) else []
+        if plans:
+            latest = plans[-1] if isinstance(plans[-1], dict) else {}
+            preview = str(latest.get("plan_content") or "").strip().replace("\n", " ")
+            if len(preview) > 80:
+                preview = preview[:80] + "..."
+            answer = f"可以，我已获得你的授权，能够读取你的学习计划。当前共读取到 {len(plans)} 条计划。{'最近一条计划是：' + preview if preview else ''}"
+        else:
+            answer = "可以，我已获得你的授权，但当前还没有读取到你的学习计划。"
+        return answer, "query_study_plans", data
+
+    if _looks_like_personal_access_question(text, "作业"):
+        if course_id is None:
+            return "可以，但读取作业完成情况需要先关联到具体课程。你先进入某门课后再问我，我就能直接查看该课程下的作业完成状态。", None, None
+        data = await builtin_tools.query_assignment_status(db, user_id=user_id, course_id=course_id)
+        assignments = data.get("assignments", []) if isinstance(data.get("assignments"), list) else []
+        submitted_count = len([item for item in assignments if isinstance(item, dict) and item.get("submitted")])
+        answer = f"可以，我已获得你的授权。当前课程下共读取到 {len(assignments)} 个作业，其中你已提交 {submitted_count} 个。"
+        return answer, "query_assignment_status", data
+
+    return None
+
+
+async def _try_fast_course_reply(
+    db: AsyncSession,
+    *,
+    course_id: int | None,
+    text: str,
+) -> str | None:
+    if course_id is None:
+        return None
+
+    # “几个章节/多少资源”这类结构化问题不必进入 RAG，可直接本地聚合回答。
+    normalized = text.strip().replace("？", "?").replace("。", "")
+    chapters = await course_chapters_crud.list_chapters(db, course_id=course_id)
+    resources = await course_resources_crud.list_resources_by_course(db, course_id=course_id)
+    assignments = await assignments_crud.list_assignments(db, course_id=course_id)
+
+    if "章节" in normalized and any(keyword in normalized for keyword in ("几个", "多少", "几章")):
+        if not chapters:
+            return "这门课程当前还没有配置章节。"
+        chapter_titles = "、".join([str(item.chapter_title) for item in chapters[:10] if item.chapter_title])
+        if chapter_titles:
+            return f"这门课程当前共有 {len(chapters)} 个章节，分别是：{chapter_titles}。"
+        return f"这门课程当前共有 {len(chapters)} 个章节。"
+
+    if "资源" in normalized and any(keyword in normalized for keyword in ("几个", "多少")):
+        return f"这门课程当前共有 {len(resources)} 个资源。"
+
+    if "作业" in normalized and any(keyword in normalized for keyword in ("几个", "多少")):
+        return f"这门课程当前共有 {len(assignments)} 个作业。"
+
+    if "课程结构" in normalized or "课程概览" in normalized:
+        return (
+            f"这门课程目前包含 {len(chapters)} 个章节、{len(resources)} 个资源、{len(assignments)} 个作业。"
+        )
+    return None
 
 
 def _parse_json_object(text: str) -> dict[str, Any] | None:
@@ -261,6 +412,7 @@ async def _maybe_store_dialogue_summary(
     if len(pending_items) < SUMMARY_TRIGGER_COUNT:
         return
 
+    # 对话记忆按批次滚动摘要，避免历史消息无限增长导致后续提示词过长。
     summary_items = pending_items[:SUMMARY_BATCH_COUNT]
     history = [{"role": str(item["role"]), "content": str(item["content"])} for item in summary_items]
     await memory_service.summarize_history_to_memory(
@@ -313,6 +465,7 @@ async def _route_with_llm(
         f"用户当前消息：{text}"
     )
     raw = await invoke_chat_model_text(system_prompt=system_prompt, user_content=user_content, temperature=0)
+    # 路由器模型只负责“分流”，一旦结果不可解析就回退到规则路由，保证主流程不中断。
     if raw is None:
         return _route_by_rules(text, course_id)
     parsed = _parse_json_object(raw)
@@ -444,6 +597,7 @@ async def _handle_active_coach_flow(
         )
 
     if session.session_status == "coach_diagnose":
+        # 教练模式是多阶段状态机，不同阶段分发到不同 handler。
         result = await coach_agent.handle_diagnose(db=db, session=session, message=stripped)
         return AssistantOrchestratorResult(
             answer=_build_coach_answer(
@@ -519,6 +673,7 @@ async def handle_assistant_chat(
     resumed_course_id = course_id
     resumed_decision: RouteDecision | None = None
     if confirm_personal_context and (not text or _looks_like_permission_confirmation(text)):
+        # 用户在授权弹窗里点“同意”后，前端可能只回传确认语，这里恢复到上一次待继续的请求。
         await _save_custom_user_message(
             db,
             session_id=session.session_id,
@@ -540,7 +695,47 @@ async def handle_assistant_chat(
     if session.session_status in COACH_STATUSES:
         return await _handle_active_coach_flow(db=db, session=session, message=text)
 
+    small_talk_reply = _try_small_talk_reply(text)
+    if small_talk_reply is not None:
+        await _save_user_message(db, session.session_id, text)
+        await _save_ai_message(
+            db,
+            session_id=session.session_id,
+            message_type="assistant_answer",
+            answer=small_talk_reply,
+            mode="small_talk",
+            extra={"router_reason": "local_small_talk"},
+        )
+        return AssistantOrchestratorResult(answer=small_talk_reply, mode="small_talk")
+
+    if _looks_like_dialogue_recall(text):
+        await _save_user_message(db, session.session_id, text)
+        recall_answer = _build_dialogue_recall_answer(recent_history)
+        await _save_ai_message(
+            db,
+            session_id=session.session_id,
+            message_type="assistant_answer",
+            answer=recall_answer,
+            mode="dialogue_recall",
+            extra={"router_reason": "local_dialogue_recall"},
+        )
+        return AssistantOrchestratorResult(answer=recall_answer, mode="dialogue_recall")
+
     course_id = resumed_course_id
+    fast_course_reply = await _try_fast_course_reply(db, course_id=course_id, text=text)
+    if fast_course_reply is not None:
+        if not resume_from_permission_request:
+            await _save_user_message(db, session.session_id, text)
+        await _save_ai_message(
+            db,
+            session_id=session.session_id,
+            message_type="assistant_answer",
+            answer=fast_course_reply,
+            mode="course_summary",
+            extra={"router_reason": "local_course_summary"},
+        )
+        return AssistantOrchestratorResult(answer=fast_course_reply, mode="course_summary")
+
     memory_contexts = await memory_service.get_memory_contexts(
         db=db,
         user_id=user_id,
@@ -557,6 +752,7 @@ async def handle_assistant_chat(
     )
 
     if decision.needs_personal_context and not confirm_personal_context:
+        # 个性化资料读取必须显式授权，因此先落一条待继续状态，不直接进入分析。
         answer = "要更准确地结合你的学习情况来分析，我需要先读取你的笔记、学习计划或作业完成情况。"
         await _save_user_message(db, session.session_id, text)
         await _save_ai_message(
@@ -668,6 +864,42 @@ async def handle_assistant_chat(
 
     allow_personal_context = confirm_personal_context and decision.needs_personal_context
     chat_mode = "personal_analysis" if allow_personal_context and decision.intent == "personal_analysis" else "chat"
+    fast_personal_reply = await _try_fast_personal_reply(
+        db,
+        user_id=user_id,
+        course_id=course_id,
+        text=text,
+        allow_personal_context=allow_personal_context,
+    )
+    if fast_personal_reply is not None:
+        answer, tool_name, tool_result = fast_personal_reply
+        await _save_ai_message(
+            db,
+            session_id=session.session_id,
+            message_type="assistant_answer",
+            answer=answer,
+            mode=chat_mode,
+            extra={
+                "tool_name": tool_name,
+                "router_reason": decision.reason,
+                "allow_personal_context": allow_personal_context,
+            },
+        )
+        await _maybe_store_dialogue_summary(
+            db=db,
+            session_id=session.session_id,
+            user_id=user_id,
+            course_id=course_id,
+        )
+        return AssistantOrchestratorResult(
+            answer=answer,
+            mode=chat_mode,
+            tool_name=tool_name,
+            tool_result=tool_result,
+            contexts=[],
+        )
+
+    # 兜底走通用聊天代理，由模型综合课程上下文、个人数据和历史对话生成回答。
     answer, tool_name, tool_result, contexts = await chat_agent.handle_chat(
         db=db,
         session_id=session.session_id,

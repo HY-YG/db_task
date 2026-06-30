@@ -1,3 +1,5 @@
+"""models 子包初始化文件，用于组织相关模块的导入边界。"""
+
 from backend.models.ai_memories_mod import AiMemory
 from backend.models.ai_messages_mod import AiMessage
 from backend.models.ai_sessions_mod import AiSession
@@ -7,6 +9,7 @@ from backend.models.course_chapters_mod import CourseChapter
 from backend.models.course_resources_mod import CourseResource
 from backend.models.courses_mod import Course
 from backend.models.enrollment_relations_mod import EnrollmentRelation
+from backend.models.learning_progress_mod import LearningProgress
 from backend.models.notifications_mod import Notification
 from backend.models.notes_mod import Note
 from backend.models.resource_chunks_mod import ResourceChunk
@@ -16,7 +19,7 @@ from backend.models.roles_mod import Role
 from backend.models.study_plans_mod import StudyPlan
 from backend.models.tags_mod import Tag
 from backend.models.teaching_relations_mod import TeachingRelation
-from backend.models.users_mod import User
+from backend.models.users_mod import User, UserToken
 
 __all__ = [
     "AiMemory",
@@ -28,6 +31,7 @@ __all__ = [
     "CourseChapter",
     "CourseResource",
     "EnrollmentRelation",
+    "LearningProgress",
     "Notification",
     "Note",
     "ResourceChunk",
@@ -38,4 +42,5 @@ __all__ = [
     "Tag",
     "TeachingRelation",
     "User",
+    "UserToken",
 ]

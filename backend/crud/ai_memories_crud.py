@@ -1,3 +1,5 @@
+"""封装AI 学习记忆的数据访问函数，负责常用增删改查与查询组合。"""
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 

@@ -1,3 +1,5 @@
+"""定义标签的数据表模型、字段映射与实体关系。"""
+
 from typing import TYPE_CHECKING
 
 from sqlalchemy import String, Text

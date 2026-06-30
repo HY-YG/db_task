@@ -1,3 +1,5 @@
+"""封装学习教练代理，负责诊断学习状态并生成分阶段辅导建议。"""
+
 from dataclasses import dataclass
 import json
 from typing import Any

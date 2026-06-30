@@ -1,3 +1,5 @@
+"""定义数据库连接、会话工厂、基类模型与依赖注入逻辑。"""
+
 import os
 from collections.abc import AsyncGenerator
 from pathlib import Path

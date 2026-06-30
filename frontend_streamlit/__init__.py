@@ -1,2 +1,2 @@
-"""Streamlit frontend package for smart learning platform."""
+"""Streamlit 前端应用包初始化文件，用于声明前端模块命名空间。"""
 

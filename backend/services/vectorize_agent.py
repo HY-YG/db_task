@@ -1,3 +1,5 @@
+"""处理课程资源切片向量化与向量索引写入流程。"""
+
 from dataclasses import dataclass
 
 from fastapi import HTTPException

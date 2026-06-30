@@ -1,3 +1,5 @@
+"""处理课程资源上传后的解析、入库与向量化触发流程。"""
+
 import json
 
 from fastapi import UploadFile

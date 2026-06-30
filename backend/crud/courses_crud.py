@@ -1,3 +1,5 @@
+"""封装课程的数据访问函数，负责常用增删改查与查询组合。"""
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -6,7 +8,7 @@ from backend.schemas.courses_sch import CourseCreate, CourseUpdate
 
 
 async def create_course(db: AsyncSession, payload: CourseCreate) -> Course:
-    course = Course(**payload.model_dump(exclude_none=True))
+    course = Course(**payload.model_dump(exclude_none=True, exclude={"teacher_user_id"}))
     db.add(course)
     await db.commit()
     await db.refresh(course)

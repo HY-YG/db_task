@@ -1,3 +1,5 @@
+"""封装课程笔记的数据访问函数，负责常用增删改查与查询组合。"""
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +22,23 @@ async def list_notes(db: AsyncSession, user_id: int | None = None, course_id: in
     if course_id is not None:
         stmt = stmt.where(Note.course_id == course_id)
     result = await db.execute(stmt.order_by(Note.recorded_at.desc()))
+    return list(result.scalars().all())
+
+
+async def list_recent_notes(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    course_id: int,
+    limit: int = 5,
+) -> list[Note]:
+    stmt = (
+        select(Note)
+        .where(Note.user_id == user_id, Note.course_id == course_id)
+        .order_by(Note.recorded_at.desc())
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
     return list(result.scalars().all())
 
 

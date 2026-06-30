@@ -1,3 +1,5 @@
+"""负责 AI 会话记忆的提取、整理、存储与检索。"""
+
 import json
 from typing import Any
 

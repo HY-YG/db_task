@@ -1,3 +1,5 @@
+"""封装向量嵌入模型加载与文本向量化能力。"""
+
 import json
 import os
 import urllib.request

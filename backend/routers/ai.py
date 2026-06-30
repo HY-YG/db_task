@@ -1,6 +1,8 @@
+"""提供 AI 会话、消息、上传与统一助手对话相关接口。"""
+
 import json
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.config.db_config import get_db
@@ -28,13 +30,15 @@ from backend.services import assistant_orchestrator, chat_agent, coach_agent, qa
 from backend.utils.response import success_response
 
 router = APIRouter(prefix="/ai", tags=["ai"])
-@router.post("/sessions", status_code=status.HTTP_201_CREATED)
+
+
+@router.post("/session/add")
 async def create_session(payload: AiSessionCreate, db: AsyncSession = Depends(get_db)) -> dict:
     session = await ai_crud.create_session(db, payload)
     return success_response(AiSessionResponse.model_validate(session))
 
 
-@router.get("/sessions")
+@router.get("/session/list")
 async def list_sessions(
     user_id: int | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
@@ -43,7 +47,7 @@ async def list_sessions(
     return success_response([AiSessionResponse.model_validate(item) for item in sessions])
 
 
-@router.put("/sessions/{session_id}")
+@router.put("/session/update/{session_id}")
 async def update_session(session_id: int, payload: AiSessionUpdate, db: AsyncSession = Depends(get_db)) -> dict:
     session = await ai_crud.get_session(db, session_id)
     if session is None:
@@ -52,13 +56,13 @@ async def update_session(session_id: int, payload: AiSessionUpdate, db: AsyncSes
     return success_response(AiSessionResponse.model_validate(session))
 
 
-@router.post("/messages", status_code=status.HTTP_201_CREATED)
+@router.post("/message/add")
 async def create_message(payload: AiMessageCreate, db: AsyncSession = Depends(get_db)) -> dict:
     message = await ai_crud.create_message(db, payload)
     return success_response(AiMessageResponse.model_validate(message))
 
 
-@router.get("/messages")
+@router.get("/message/list")
 async def list_messages(
     session_id: int | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
@@ -67,7 +71,7 @@ async def list_messages(
     return success_response([AiMessageResponse.model_validate(item) for item in messages])
 
 
-@router.delete("/sessions/{session_id}")
+@router.delete("/session/delete/{session_id}")
 async def delete_session(session_id: int, db: AsyncSession = Depends(get_db)) -> dict:
     session = await ai_crud.get_session(db, session_id)
     if session is None:
@@ -132,7 +136,7 @@ async def coach_next(payload: AiCoachNextRequest, db: AsyncSession = Depends(get
     raise HTTPException(status_code=400, detail="Unsupported coach stage")
 
 
-@router.post("/uploads", status_code=status.HTTP_201_CREATED)
+@router.post("/upload")
 async def upload_resource(
     chapter_id: int = Form(...),
     file: UploadFile = File(...),

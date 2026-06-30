@@ -1,3 +1,5 @@
+"""提供 AI 助手可调用的后端工具函数，用于查询学习数据与结构化信息。"""
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.crud import (
@@ -20,7 +22,7 @@ from backend.schemas.study_plans_sch import StudyPlanResponse
 
 async def query_user_notes(db: AsyncSession, user_id: int, course_id: int | None = None) -> dict:
     notes = await notes_crud.list_notes(db, user_id=user_id, course_id=course_id)
-    return {"notes": [NoteResponse.model_validate(item).model_dump() for item in notes]}
+    return {"notes": [NoteResponse.model_validate(item).model_dump(mode="json") for item in notes]}
 
 
 async def query_course_resources(db: AsyncSession, course_id: int) -> dict:
@@ -28,11 +30,12 @@ async def query_course_resources(db: AsyncSession, course_id: int) -> dict:
     chapter_models = [CourseChapterResponse.model_validate(item) for item in chapters]
     data = []
     for ch in chapter_models:
+        # 这里按章节重新拼装资源树，供 AI 工具直接消费，避免模型自己再理解扁平列表关系。
         resources = await course_resources_crud.list_resources(db, chapter_id=ch.chapter_id)
         data.append(
             {
-                "chapter": ch.model_dump(),
-                "resources": [CourseResourceResponse.model_validate(r).model_dump() for r in resources],
+                "chapter": ch.model_dump(mode="json"),
+                "resources": [CourseResourceResponse.model_validate(r).model_dump(mode="json") for r in resources],
             }
         )
     return {"course_id": course_id, "chapters": data}
@@ -48,9 +51,10 @@ async def query_assignment_status(db: AsyncSession, user_id: int, course_id: int
 
     status = []
     for a in assignment_models:
+        # AI 更关心“是否已提交”这种结论，因此这里先把提交状态做成结构化布尔值。
         status.append(
             {
-                "assignment": a.model_dump(),
+                "assignment": a.model_dump(mode="json"),
                 "submitted": a.assignment_id in submitted_assignment_ids,
             }
         )
@@ -60,7 +64,7 @@ async def query_assignment_status(db: AsyncSession, user_id: int, course_id: int
 async def query_study_plans(db: AsyncSession, user_id: int, limit: int = 5) -> dict:
     plans = await study_plans_crud.list_plans(db, user_id=user_id)
     plan_models = [StudyPlanResponse.model_validate(item) for item in plans]
-    recent_plans = [item.model_dump() for item in plan_models[-limit:]]
+    recent_plans = [item.model_dump(mode="json") for item in plan_models[-limit:]]
     return {"user_id": user_id, "plans": recent_plans}
 
 
@@ -89,5 +93,5 @@ async def query_learning_memories(
         "memory_kind": memory_kind,
         "coach_stage": coach_stage,
         "topic": topic,
-        "memories": [item.model_dump() for item in memory_models],
+        "memories": [item.model_dump(mode="json") for item in memory_models],
     }

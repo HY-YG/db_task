@@ -1,3 +1,5 @@
+"""实现检索增强生成流程，包括召回、重排与上下文拼装。"""
+
 import json
 import math
 from pathlib import Path
